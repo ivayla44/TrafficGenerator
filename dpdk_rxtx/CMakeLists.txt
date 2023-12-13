@@ -23,5 +23,5 @@ set(ENV{PKG_CONFIG_PATH} "${DPDK_TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/")
 
 pkg_search_module(LIBDPDK REQUIRED libdpdk)
 target_compile_options(dpdk_rxtx PRIVATE ${LIBDPDK_CFLAGS})
-target_link_libraries(dpdk_rxtx PRIVATE ${LIBDPDK_LDFLAGS} -lnuma)
+target_link_libraries(dpdk_rxtx PRIVATE ${LIBDPDK_STATIC_LDFLAGS} -lnuma)
 
