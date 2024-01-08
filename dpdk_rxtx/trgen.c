@@ -26,12 +26,34 @@
 //#include <rte_ether.h>
 //#include <rte_bitops.h>
 
+// TODO: add these to a header file (dont feel like rebuilding rn :))
+#define PCAP_VERSION_MAJOR 2
+#define PCAP_VERSION_MINOR 4
+
+struct pcap_file_header {
+    uint32_t magic;
+    uint16_t version_major;
+    uint16_t version_minor;
+    uint32_t thiszone;	/* gmt to local correction; this is always 0 */
+    uint32_t sigfigs;	/* accuracy of timestamps; this is always 0 */
+    uint32_t snaplen;	/* max length saved portion of each pkt */
+    uint32_t linktype;	/* data link type (LINKTYPE_*) */
+};
+
+struct pcap_pkt_header {
+    uint32_t sec;
+    uint32_t usec;
+    uint32_t caplen;
+    uint32_t len;
+};
 
 // TODO: sizes based on what? (these are from examples from the dpdk documentation)
 #define RTE_RX_DESC_DEFAULT 1024
 #define RTE_TX_DESC_DEFAULT 1024
 
-// comments about this: ln. 78
+#define MAX_PACKET_SIZE 2048 // same as RTE_MBUF_DEFAULT_BUF_SIZE?
+
+// comments about this: ln. 98
 #define VALID_RSS_HF 0x38d34
 
 
@@ -67,7 +89,7 @@ bool init_rx_tx_queues(uint32_t eth_port_id, uint16_t socket_id, struct rte_memp
 
     struct rte_eth_dev_info dev_info;
     if(rte_eth_dev_info_get(eth_port_id, &dev_info) != 0) {
-        fprintf(stderr, "Unable to get device info.");
+        fprintf(stderr, "Unable to get device info.\n");
         return false;
     }
     printf("Max rx queues: %d; Max tx queues: %d\n", dev_info.max_rx_queues, dev_info.max_tx_queues);
@@ -123,7 +145,6 @@ bool init_rx_tx_queues(uint32_t eth_port_id, uint16_t socket_id, struct rte_memp
         return false;
     }
 
-
     struct rte_eth_rxconf rxconf = dev_info.default_rxconf;
     rxconf.offloads = port_conf.rxmode.offloads;
     if(rte_eth_rx_queue_setup(eth_port_id, 0, rx_qs_desc, socket_id, &rxconf, mbuf_pool) != 0) {
@@ -138,16 +159,22 @@ bool init_rx_tx_queues(uint32_t eth_port_id, uint16_t socket_id, struct rte_memp
         return false;
     }
 
-
-    struct rte_ether_addr mac;
-    rte_eth_macaddr_get(eth_port_id, &mac);
     printf("DPDK port initialized\n");
     return true;
+}
+
+struct rte_ether_addr get_mac_addr(uint32_t eth_port_id) {
+    struct rte_ether_addr mac;
+    if(!rte_eth_macaddr_get(eth_port_id, &mac)) {
+        fprintf(stderr, "Unable to get mac address (port id: %d)\n", eth_port_id);
+    }
+    return mac;
 }
 
 void start_port(uint32_t eth_port_id) {
     if (rte_eth_dev_start(eth_port_id) < 0) {
         fprintf(stderr, "Failed to start DPDK port; (Err value: %s)\n", rte_strerror(rte_errno));
+        return;
     }
 
     uint32_t check_cnt = 100, sleep_us  = 100000;
@@ -160,10 +187,73 @@ void start_port(uint32_t eth_port_id) {
     if (!link.link_status) {
         rte_eth_dev_stop(eth_port_id);
         fprintf(stderr, "Failed to bring up DPDK port\n");
+        return;
     }
 
     char* mode = (link.link_duplex == RTE_ETH_LINK_FULL_DUPLEX) ? "full-duplex" : "half-duplex";
     printf("Successfully started DPDK port: %d. Speed: %u Mbps. Mode: %s\n", eth_port_id, link.link_speed, mode);
+}
+
+struct rte_mbuf* get_packet(FILE* file, struct rte_mempool* mbuf_pool) {
+    struct rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
+    if(!mbuf) {
+        fprintf(stderr, "Could not allocate mbuf (mbuf pool name: %s)\n", mbuf_pool->name);
+        fclose(file);
+        return NULL;
+    }
+
+    struct pcap_pkt_header pkt_header;
+    if (fread(&pkt_header, sizeof(struct pcap_pkt_header), 1, file) != 1) {
+        fprintf(stderr, "Could not read pcap packet header\n");
+        rte_pktmbuf_free(mbuf);
+        fclose(file);
+        return NULL;
+    }
+
+    if (pkt_header.caplen <= MAX_PACKET_SIZE) {
+        if (fread(rte_pktmbuf_mtod(mbuf, char*), pkt_header.caplen, 1, file) != 1) {
+            fprintf(stderr, "Error reading packet data\n");
+            rte_pktmbuf_free(mbuf);
+            fclose(file);
+            return NULL;
+        }
+
+        mbuf->data_len = pkt_header.caplen;
+        mbuf->pkt_len = pkt_header.len;
+    } else {
+        fprintf(stderr, "Packet size exceeds maximum supported size\n");
+        rte_pktmbuf_free(mbuf);
+        fclose(file);
+        return NULL;
+    }
+
+    return mbuf;
+}
+
+uint32_t load_packets(char* filenm, struct rte_mempool* mbuf_pool) {
+    FILE* pcap_file = fopen(filenm, "r");
+    if(!pcap_file) {
+        fprintf(stderr, "Could not load pcap file.\n");
+        return 0;
+    }
+
+    struct pcap_file_header* header = malloc(sizeof(struct pcap_file_header));
+    if(fread(header, sizeof(struct pcap_file_header), 1, pcap_file) != 1) {
+        fprintf(stderr, "Could not read file header.\n");
+        fclose(pcap_file);
+        return 0;
+    }
+
+    uint32_t pcap_magic = 0xA1B2C3D4;
+    if ((header->magic != pcap_magic) || (header->version_major != PCAP_VERSION_MAJOR) || (header->version_minor != PCAP_VERSION_MINOR)) {
+        fprintf(stderr, "Invalid file - magic: %x, version_major: %d, version_minor: %d.\n", header->magic, header->version_major, header->version_minor);
+        fclose(pcap_file);
+        return 0;
+    }
+
+    
+
+    return 1;
 }
 
 int main() {
@@ -181,9 +271,10 @@ int main() {
 
     if(!init_rx_tx_queues(eth_port_id, socket_id, mbuf_pool)) {
         fprintf(stderr,"Cannot initialize dpdk port. Exiting.\n");
-        exit(2);
+        exit(3);
     }
 
     start_port(eth_port_id);
 
+    load_packets("./files/tg-test.pcap");
 }
