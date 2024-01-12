@@ -34,7 +34,7 @@ struct pcap_file_header {
     uint32_t magic;
     uint16_t version_major;
     uint16_t version_minor;
-    uint32_t thiszone;	/* gmt to local correction; this is always 0 */
+    int32_t thiszone;	/* gmt to local correction; this is always 0 */
     uint32_t sigfigs;	/* accuracy of timestamps; this is always 0 */
     uint32_t snaplen;	/* max length saved portion of each pkt */
     uint32_t linktype;	/* data link type (LINKTYPE_*) */
@@ -47,13 +47,20 @@ struct pcap_pkt_header {
     uint32_t len;
 };
 
+struct tcap_pkthdr {
+    uint32_t sec;
+    uint32_t usec;
+    uint32_t caplen;
+    uint32_t len;
+};
+
 // TODO: sizes based on what? (these are from examples from the dpdk documentation)
 #define RTE_RX_DESC_DEFAULT 1024
 #define RTE_TX_DESC_DEFAULT 1024
 
 #define MAX_PACKET_SIZE 2048 // same as RTE_MBUF_DEFAULT_BUF_SIZE?
 
-// comments about this: ln. 98
+// comments about this: ln. 107
 #define VALID_RSS_HF 0x38d34
 
 
@@ -194,66 +201,91 @@ void start_port(uint32_t eth_port_id) {
     printf("Successfully started DPDK port: %d. Speed: %u Mbps. Mode: %s\n", eth_port_id, link.link_speed, mode);
 }
 
-struct rte_mbuf* get_packet(FILE* file, struct rte_mempool* mbuf_pool) {
+bool check_pcap(FILE* pcap_file) {
+    struct pcap_file_header header;
+    if(fread(&header, sizeof(struct pcap_file_header), 1, pcap_file) != 1) {
+        fprintf(stderr, "Could not read file header.\n");
+        return false;
+    }
+
+    uint32_t pcap_magic = 0xA1B2C3D4;
+    if ((header.magic != pcap_magic) || (header.version_major != PCAP_VERSION_MAJOR) || (header.version_minor != PCAP_VERSION_MINOR)) {
+        fprintf(stderr, "Invalid file - magic: %x, version_major: %d, version_minor: %d.\n", header.magic, header.version_major, header.version_minor);
+        return false;
+    }
+
+    printf("Valid pcap file.\n");
+    return true;
+}
+
+struct rte_mbuf* get_packet(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
     struct rte_mbuf* mbuf = rte_pktmbuf_alloc(mbuf_pool);
     if(!mbuf) {
         fprintf(stderr, "Could not allocate mbuf (mbuf pool name: %s)\n", mbuf_pool->name);
-        fclose(file);
         return NULL;
     }
 
     struct pcap_pkt_header pkt_header;
-    if (fread(&pkt_header, sizeof(struct pcap_pkt_header), 1, file) != 1) {
+    if (fread(&pkt_header, sizeof(struct pcap_pkt_header), 1, pcap_file) != 1) {
+        if(feof(pcap_file)) {
+            return NULL;
+        }
         fprintf(stderr, "Could not read pcap packet header\n");
         rte_pktmbuf_free(mbuf);
-        fclose(file);
         return NULL;
     }
 
     if (pkt_header.caplen <= MAX_PACKET_SIZE) {
-        if (fread(rte_pktmbuf_mtod(mbuf, char*), pkt_header.caplen, 1, file) != 1) {
+        if (fread(rte_pktmbuf_mtod(mbuf, char*), pkt_header.caplen, 1, pcap_file) != 1) {
             fprintf(stderr, "Error reading packet data\n");
             rte_pktmbuf_free(mbuf);
-            fclose(file);
             return NULL;
         }
 
         mbuf->data_len = pkt_header.caplen;
         mbuf->pkt_len = pkt_header.len;
+
+        printf("Packet - packet_data_len: %d, packet_len: %d\n", mbuf->data_len, mbuf->pkt_len);
     } else {
         fprintf(stderr, "Packet size exceeds maximum supported size\n");
         rte_pktmbuf_free(mbuf);
-        fclose(file);
         return NULL;
     }
 
     return mbuf;
 }
 
-uint32_t load_packets(char* filenm, struct rte_mempool* mbuf_pool) {
-    FILE* pcap_file = fopen(filenm, "r");
-    if(!pcap_file) {
-        fprintf(stderr, "Could not load pcap file.\n");
-        return 0;
-    }
-
-    struct pcap_file_header* header = malloc(sizeof(struct pcap_file_header));
-    if(fread(header, sizeof(struct pcap_file_header), 1, pcap_file) != 1) {
-        fprintf(stderr, "Could not read file header.\n");
+struct rte_mbuf* load_packets(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
+    struct rte_mbuf* head = get_packet(pcap_file, mbuf_pool);
+    if(!head) {
+        fprintf(stderr, "Error reading initial packet.\n");
         fclose(pcap_file);
-        return 0;
+        return NULL;
+    }
+    struct rte_mbuf* curr = head;
+    struct rte_mbuf* prev = NULL;
+
+    while(!feof(pcap_file)) {
+        if(prev) {
+            curr = get_packet(pcap_file, mbuf_pool);
+            if(!curr) {
+                if(feof(pcap_file)) {
+//                    TODO: this works but i hate it, im tired and cant think of a way to fix it but i need to figure out a better way to do this
+                    printf("EOF reached. All packets read.\n");
+                    break;
+                }
+                fprintf(stderr, "Error reading next packet.\n");
+                fclose(pcap_file);
+                return NULL;
+            }
+            prev->next = curr;
+            head->nb_segs++;
+        }
+        head->pkt_len += curr->data_len;
+        prev = curr;
     }
 
-    uint32_t pcap_magic = 0xA1B2C3D4;
-    if ((header->magic != pcap_magic) || (header->version_major != PCAP_VERSION_MAJOR) || (header->version_minor != PCAP_VERSION_MINOR)) {
-        fprintf(stderr, "Invalid file - magic: %x, version_major: %d, version_minor: %d.\n", header->magic, header->version_major, header->version_minor);
-        fclose(pcap_file);
-        return 0;
-    }
-
-    
-
-    return 1;
+    return head;
 }
 
 int main() {
@@ -276,5 +308,16 @@ int main() {
 
     start_port(eth_port_id);
 
-    load_packets("./files/tg-test.pcap");
+    FILE* pcap_file = fopen("./files/tg-test.pcap", "r");
+    if(!pcap_file) {
+        fprintf(stderr, "Cannot open file. Exiting.\n");
+        exit(4);
+    }
+
+    if(!check_pcap(pcap_file)) {
+        fclose(pcap_file);
+        exit(5);
+    }
+
+    struct rte_mbuf* head = load_packets(pcap_file, mbuf_pool);
 }
