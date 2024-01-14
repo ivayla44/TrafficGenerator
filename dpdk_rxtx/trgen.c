@@ -4,27 +4,27 @@
 #include <unistd.h>
 #include <sys/errno.h>
 
-#include "config/rte_config.h"
-#include "lib/eal/include/rte_errno.h"
-#include "lib/eal/include/rte_eal.h"
-#include "lib/eal/include/rte_lcore.h"
-#include "lib/mempool/rte_mempool.h"
-#include "lib/mbuf/rte_mbuf_core.h"
-#include "lib/mbuf/rte_mbuf.h"
-#include "lib/ethdev/rte_ethdev.h"
-#include "lib/net/rte_ether.h"
-#include "lib/eal/include/rte_bitops.h"
+//#include "config/rte_config.h"
+//#include "lib/eal/include/rte_errno.h"
+//#include "lib/eal/include/rte_eal.h"
+//#include "lib/eal/include/rte_lcore.h"
+//#include "lib/mempool/rte_mempool.h"
+//#include "lib/mbuf/rte_mbuf_core.h"
+//#include "lib/mbuf/rte_mbuf.h"
+//#include "lib/ethdev/rte_ethdev.h"
+//#include "lib/net/rte_ether.h"
+//#include "lib/eal/include/rte_bitops.h"
 
-//#include <rte_config.h>
-//#include <rte_errno.h>
-//#include <rte_eal.h>
-//#include <rte_lcore.h>
-//#include <rte_mempool.h>
-//#include <rte_mbuf_core.h>
-//#include <rte_mbuf.h>
-//#include <rte_ethdev.h>
-//#include <rte_ether.h>
-//#include <rte_bitops.h>
+#include <rte_config.h>
+#include <rte_errno.h>
+#include <rte_eal.h>
+#include <rte_lcore.h>
+#include <rte_mempool.h>
+#include <rte_mbuf_core.h>
+#include <rte_mbuf.h>
+#include <rte_ethdev.h>
+#include <rte_ether.h>
+#include <rte_bitops.h>
 
 // TODO: add these to a header file (dont feel like rebuilding rn :))
 #define PCAP_VERSION_MAJOR 2
@@ -47,20 +47,15 @@ struct pcap_pkt_header {
     uint32_t len;
 };
 
-struct tcap_pkthdr {
-    uint32_t sec;
-    uint32_t usec;
-    uint32_t caplen;
-    uint32_t len;
-};
 
 // TODO: sizes based on what? (these are from examples from the dpdk documentation)
 #define RTE_RX_DESC_DEFAULT 1024
 #define RTE_TX_DESC_DEFAULT 1024
 
 #define MAX_PACKET_SIZE 2048 // same as RTE_MBUF_DEFAULT_BUF_SIZE?
+#define MAX_PKT_BURST 32
 
-// comments about this: ln. 107
+// comments about this: ln. 101
 #define VALID_RSS_HF 0x38d34
 
 
@@ -92,7 +87,7 @@ uint16_t log_avail_eth_ports() {
     printf("Number of available Ethernet ports: %u\n", num_ports);
 }
 
-bool init_rx_tx_queues(uint32_t eth_port_id, uint16_t socket_id, struct rte_mempool* mbuf_pool) {
+bool init_rx_tx_queues(uint16_t eth_port_id, uint16_t socket_id, struct rte_mempool* mbuf_pool) {
 
     struct rte_eth_dev_info dev_info;
     if(rte_eth_dev_info_get(eth_port_id, &dev_info) != 0) {
@@ -170,15 +165,20 @@ bool init_rx_tx_queues(uint32_t eth_port_id, uint16_t socket_id, struct rte_memp
     return true;
 }
 
-struct rte_ether_addr get_mac_addr(uint32_t eth_port_id) {
-    struct rte_ether_addr mac;
-    if(!rte_eth_macaddr_get(eth_port_id, &mac)) {
+struct rte_ether_addr* get_mac_addr(uint16_t eth_port_id) {
+    struct rte_ether_addr* mac = malloc(sizeof(struct rte_ether_addr));
+    if(!mac) {
+        fprintf(stderr, "Unable to allocate memory for mac address.\n");
+        return NULL;
+    }
+    if(!rte_eth_macaddr_get(eth_port_id, mac)) {
         fprintf(stderr, "Unable to get mac address (port id: %d)\n", eth_port_id);
+        return NULL;
     }
     return mac;
 }
 
-void start_port(uint32_t eth_port_id) {
+void start_port(uint16_t eth_port_id) {
     if (rte_eth_dev_start(eth_port_id) < 0) {
         fprintf(stderr, "Failed to start DPDK port; (Err value: %s)\n", rte_strerror(rte_errno));
         return;
@@ -270,7 +270,7 @@ struct rte_mbuf* load_packets(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
             curr = get_packet(pcap_file, mbuf_pool);
             if(!curr) {
                 if(feof(pcap_file)) {
-//                    TODO: this works but i hate it, im tired and cant think of a way to fix it but i need to figure out a better way to do this
+//                    TODO: this works but def not a good fix, need to figure out a better way to do this
                     printf("EOF reached. All packets read.\n");
                     break;
                 }
@@ -288,6 +288,28 @@ struct rte_mbuf* load_packets(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
     return head;
 }
 
+//void prep_tx_packets(struct rte_mbuf** tx_packets, struct rte_mbuf* head, struct rte_ether_addr* dest_addr, uint16_t eth_port_id) {
+//    struct rte_ether_addr* src_addr = get_mac_addr(eth_port_id);
+//    if(!src_addr) {
+//        fprintf(stderr, "Couldn't get src mac address.\n");
+//        return;
+//    }
+//
+//    struct rte_mbuf* pkt = head;
+//
+//    for(uint32_t pkt_indx = 0; pkt_indx < head->nb_segs; pkt = pkt->next, ++pkt_indx) {
+//        struct rte_ether_hdr *ethdr;
+//        ethdr = (struct rte_ether_hdr *)rte_pktmbuf_prepend(pkt, (uint16_t)sizeof(*ethdr));
+//
+//        rte_ether_addr_copy(dest_addr, &ethdr->dst_addr);
+//        rte_ether_addr_copy(src_addr, &ethdr->src_addr);
+//
+//        tx_packets[pkt_indx] = pkt;
+//    }
+//
+//    free(src_addr);
+//}
+
 int main() {
     char* params[4] = {"dpdk_rxtx", "-n 2", "-l 1", "--no-telemetry"};
     dpdk_init(params, 4);
@@ -296,14 +318,17 @@ int main() {
 
     struct rte_mempool* mbuf_pool = init_mempool(8192, socket_id);
 
-    if(log_avail_eth_ports() == (uintptr_t)NULL) exit(1);
+    if(log_avail_eth_ports() == (uintptr_t)NULL) {
+        fprintf(stderr, "No available ports. Exiting.\n");
+        exit(1);
+    }
 
     uint16_t eth_port_id = rte_eth_find_next(0);
     printf("Eth port ID: %d\n", eth_port_id);
 
     if(!init_rx_tx_queues(eth_port_id, socket_id, mbuf_pool)) {
         fprintf(stderr,"Cannot initialize dpdk port. Exiting.\n");
-        exit(3);
+        exit(2);
     }
 
     start_port(eth_port_id);
@@ -311,13 +336,24 @@ int main() {
     FILE* pcap_file = fopen("./files/tg-test.pcap", "r");
     if(!pcap_file) {
         fprintf(stderr, "Cannot open file. Exiting.\n");
-        exit(4);
+        exit(3);
     }
 
     if(!check_pcap(pcap_file)) {
         fclose(pcap_file);
-        exit(5);
+        exit(4);
     }
 
     struct rte_mbuf* head = load_packets(pcap_file, mbuf_pool);
+
+    char* mac_addr_str = "e4:8d:8c:20:fb:bb";
+    struct rte_ether_addr dest_addr;
+    if(rte_ether_unformat_addr(mac_addr_str, &dest_addr) != 0) {
+        fprintf(stderr, "Cannot parse mac addr string to rte_ether_addr struct.\n");
+        exit(3);
+    }
+
+//    struct rte_mbuf* tx_packets[MAX_PKT_BURST];
+//    prep_tx_packets(tx_packets, head, &dest_addr, eth_port_id);
+
 }
