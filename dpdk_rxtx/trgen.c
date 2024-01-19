@@ -16,8 +16,6 @@
 //#include "lib/net/rte_ether.h"
 //#include "lib/eal/include/rte_bitops.h"
 //#include "lib/net/rte_ip.h"
-//#include "lib/eal/include/rte_random.h"
-//#include "lib/eal/include/generic/rte_byteorder.h"
 
 #include <rte_config.h>
 #include <rte_errno.h>
@@ -30,9 +28,6 @@
 #include <rte_ether.h>
 #include <rte_bitops.h>
 #include <rte_ip.h>
-#include <rte_random.h>
-#include <rte_byteorder.h>
-
 
 
 struct tgn_pcap_pkt_header {
@@ -45,7 +40,6 @@ struct tgn_pcap_pkt_header {
 #define RTE_RX_DESC_DEFAULT 1024
 #define RTE_TX_DESC_DEFAULT 1024
 
-#define MAX_PACKET_SIZE 2048 // same as RTE_MBUF_DEFAULT_BUF_SIZE?
 #define MAX_PKT_BURST 32
 
 #define VALID_RSS_HF 0x38d34
@@ -89,7 +83,7 @@ bool init_rx_tx_queues(uint16_t eth_port_id, uint16_t socket_id, struct rte_memp
     printf("Max rx queues: %d; Max tx queues: %d\n", dev_info.max_rx_queues, dev_info.max_tx_queues);
 
 
-    struct rte_eth_conf port_conf;
+    struct rte_eth_conf port_conf = {};
 
     // TODO: (figure this out) works like this so i'll leave it for now, def isn't a solution but idk what to do w it
     // error returned in rte_eth_dev_configure call:
@@ -215,7 +209,7 @@ struct rte_mbuf* get_packet(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
         return NULL;
     }
 
-    if (pkt_header.caplen <= MAX_PACKET_SIZE || pkt_header.caplen != pkt_header.len) {
+    if (pkt_header.caplen <= RTE_MBUF_DEFAULT_BUF_SIZE && pkt_header.caplen == pkt_header.len) {
         if (fread(rte_pktmbuf_mtod(mbuf, char*), pkt_header.caplen, 1, pcap_file) != 1) {
             fprintf(stderr, "Error reading packet data\n");
             rte_pktmbuf_free(mbuf);
@@ -227,7 +221,7 @@ struct rte_mbuf* get_packet(FILE* pcap_file, struct rte_mempool* mbuf_pool) {
 
         printf("Packet - packet_data_len: %d, packet_len: %d\n", mbuf->data_len, mbuf->pkt_len);
     } else {
-        fprintf(stderr, "Packet size exceeds maximum supported size or \n");
+        fprintf(stderr, "Packet size exceeds maximum supported size or partial packet.\n");
         rte_pktmbuf_free(mbuf);
         return NULL;
     }
@@ -255,15 +249,20 @@ uint32_t load_packets(struct rte_mbuf** tx_packets, FILE* pcap_file, struct rte_
     return pkt_num;
 }
 
-void send_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struct rte_ether_addr* src_mac_addr, const struct rte_ether_addr* dest_mac_addr, uint16_t eth_port_id) {
+uint16_t send_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struct rte_ether_addr* src_mac_addr, const struct rte_ether_addr* dest_mac_addr, uint16_t eth_port_id) {
     for(uint32_t pkt_indx = 0; pkt_indx < pkt_num; ++pkt_indx) {
         struct rte_mbuf* pkt = tx_packets[pkt_indx];
 
         struct rte_ether_hdr* eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr*);
 
-//        The error comes from these calls. I tried calling rte_is_valid_assigned_ether_addr() for each of them, but it still causes the same error.
-//        rte_ether_addr_copy(src_mac_addr, &eth_hdr->src_addr);
-//        rte_ether_addr_copy(dest_mac_addr, &eth_hdr->dst_addr);
+        fprintf(stderr, "Before Pkt:%p Eh:%p SrcEther:" RTE_ETHER_ADDR_PRT_FMT " DstEther:" RTE_ETHER_ADDR_PRT_FMT "\n",
+                pkt, eth_hdr, RTE_ETHER_ADDR_BYTES(&eth_hdr->src_addr), RTE_ETHER_ADDR_BYTES(&eth_hdr->dst_addr));
+
+        rte_ether_addr_copy(src_mac_addr, &eth_hdr->src_addr);
+        rte_ether_addr_copy(dest_mac_addr, &eth_hdr->dst_addr);
+
+        fprintf(stderr, "After Pkt:%p Eh:%p SrcEther:" RTE_ETHER_ADDR_PRT_FMT " DstEther:" RTE_ETHER_ADDR_PRT_FMT "\n",
+                pkt, eth_hdr, RTE_ETHER_ADDR_BYTES(&eth_hdr->src_addr), RTE_ETHER_ADDR_BYTES(&eth_hdr->dst_addr));
 
         struct rte_ipv4_hdr* ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*, sizeof(struct rte_ether_hdr));
 
@@ -276,6 +275,36 @@ void send_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struc
 
         printf("Changed pkt %d eth header.\n", pkt_indx);
     }
+
+    uint16_t sent = rte_eth_tx_burst(eth_port_id, 0, tx_packets, pkt_num);
+    if(sent < pkt_num) {
+        fprintf(stderr, "Tried to send %d packets. %d packets successfully sent.\n", pkt_num, sent);
+        return 0;
+    }
+
+    printf("%d packets sent.\n", sent);
+    return sent;
+}
+
+uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts) {
+    struct rte_mbuf* rx_packets[MAX_PKT_BURST];
+    int nb_rx;
+    uint32_t pkts = 0;
+
+    while(true) {
+        nb_rx = rte_eth_rx_burst(eth_port_id, 0, rx_packets, nb_pkts);
+
+        if(nb_rx) {
+            for(uint32_t pkt_indx = 0; pkt_indx < nb_rx; pkt_indx++) {
+                fprintf(stdout, "Received packet: %d, pkt_len: %u, data_len: %u, pool: %s.\n", pkts, rx_packets[pkt_indx + pkts]->pkt_len, rx_packets[pkt_indx + pkts]->data_len, rx_packets[pkt_indx + pkts]->pool->name);
+                pkts++;
+            }
+            if(pkts == nb_pkts) {
+                break;
+            }
+        }
+    }
+    return nb_rx;
 }
 
 int main() {
@@ -333,6 +362,10 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    send_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
+    uint16_t sent = send_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
+
+    if(sent) {
+        rx_loop(eth_port_id, sent);
+    }
 
 }
