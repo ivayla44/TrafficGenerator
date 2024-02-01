@@ -5,18 +5,6 @@
 #include <sys/errno.h>
 #include <pcap/pcap.h>
 
-#include "config/rte_config.h"
-#include "lib/eal/include/rte_errno.h"
-#include "lib/eal/include/rte_eal.h"
-#include "lib/eal/include/rte_lcore.h"
-#include "lib/mempool/rte_mempool.h"
-#include "lib/mbuf/rte_mbuf_core.h"
-#include "lib/mbuf/rte_mbuf.h"
-#include "lib/ethdev/rte_ethdev.h"
-#include "lib/net/rte_ether.h"
-#include "lib/eal/include/rte_bitops.h"
-#include "lib/net/rte_ip.h"
-
 #include <rte_config.h>
 #include <rte_errno.h>
 #include <rte_eal.h>
