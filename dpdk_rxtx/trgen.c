@@ -5,17 +5,17 @@
 #include <sys/errno.h>
 #include <pcap/pcap.h>
 
-//#include "config/rte_config.h"
-//#include "lib/eal/include/rte_errno.h"
-//#include "lib/eal/include/rte_eal.h"
-//#include "lib/eal/include/rte_lcore.h"
-//#include "lib/mempool/rte_mempool.h"
-//#include "lib/mbuf/rte_mbuf_core.h"
-//#include "lib/mbuf/rte_mbuf.h"
-//#include "lib/ethdev/rte_ethdev.h"
-//#include "lib/net/rte_ether.h"
-//#include "lib/eal/include/rte_bitops.h"
-//#include "lib/net/rte_ip.h"
+#include "config/rte_config.h"
+#include "lib/eal/include/rte_errno.h"
+#include "lib/eal/include/rte_eal.h"
+#include "lib/eal/include/rte_lcore.h"
+#include "lib/mempool/rte_mempool.h"
+#include "lib/mbuf/rte_mbuf_core.h"
+#include "lib/mbuf/rte_mbuf.h"
+#include "lib/ethdev/rte_ethdev.h"
+#include "lib/net/rte_ether.h"
+#include "lib/eal/include/rte_bitops.h"
+#include "lib/net/rte_ip.h"
 
 #include <rte_config.h>
 #include <rte_errno.h>
@@ -249,7 +249,7 @@ uint32_t load_packets(struct rte_mbuf** tx_packets, FILE* pcap_file, struct rte_
     return pkt_num;
 }
 
-uint16_t send_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struct rte_ether_addr* src_mac_addr, const struct rte_ether_addr* dest_mac_addr, uint16_t eth_port_id) {
+void prep_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struct rte_ether_addr* src_mac_addr, const struct rte_ether_addr* dest_mac_addr, uint16_t eth_port_id) {
     for(uint32_t pkt_indx = 0; pkt_indx < pkt_num; ++pkt_indx) {
         struct rte_mbuf* pkt = tx_packets[pkt_indx];
 
@@ -264,44 +264,54 @@ uint16_t send_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const s
         fprintf(stderr, "After Pkt:%p Eh:%p SrcEther:" RTE_ETHER_ADDR_PRT_FMT " DstEther:" RTE_ETHER_ADDR_PRT_FMT "\n",
                 pkt, eth_hdr, RTE_ETHER_ADDR_BYTES(&eth_hdr->src_addr), RTE_ETHER_ADDR_BYTES(&eth_hdr->dst_addr));
 
+        printf("Changed pkt %d eth header.\n", pkt_indx);
+
         struct rte_ipv4_hdr* ipv4_hdr = rte_pktmbuf_mtod_offset(pkt, struct rte_ipv4_hdr*, sizeof(struct rte_ether_hdr));
+
+        ipv4_hdr->hdr_checksum = 0;
 
         uint64_t flags = RTE_MBUF_F_TX_IPV4 | RTE_MBUF_F_TX_IP_CKSUM |
                          RTE_MBUF_F_TX_TCP_CKSUM | RTE_MBUF_F_TX_UDP_CKSUM;
 
         pkt->ol_flags |= flags;
-        pkt->l2_len = RTE_ETHER_ADDR_LEN;
+        pkt->l2_len = RTE_ETHER_HDR_LEN;
         pkt->l3_len = ((ipv4_hdr->version_ihl & 0x0F) * 4u);
-
-        printf("Changed pkt %d eth header.\n", pkt_indx);
     }
-
-    uint16_t sent = rte_eth_tx_burst(eth_port_id, 0, tx_packets, pkt_num);
-    if(sent < pkt_num) {
-        fprintf(stderr, "Tried to send %d packets. %d packets successfully sent.\n", pkt_num, sent);
-        return 0;
-    }
-
-    printf("%d packets sent.\n", sent);
-    return sent;
 }
 
-uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts) {
+uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_packets) {
     struct rte_mbuf* rx_packets[MAX_PKT_BURST];
-    int nb_rx;
+    int nb_rx, cnt = 0;
     uint32_t pkts = 0;
 
     while(true) {
+//      right now it's a random number for send period
+        if(!(++cnt % 10000000)) {
+            uint16_t sent = rte_eth_tx_burst(eth_port_id, 0, tx_packets, nb_pkts);
+            if(sent < nb_pkts) {
+                struct rte_eth_stats tmp = {};
+                if(!rte_eth_stats_get(eth_port_id, &tmp)) {
+                    fprintf(stderr,
+                            "Successfully transmitted packets: %lu\nFailed transmitted packets: %lu\n",
+                            tmp.opackets, tmp.oerrors);
+                }
+                return 0;
+            }
+
+        }
+
         nb_rx = rte_eth_rx_burst(eth_port_id, 0, rx_packets, nb_pkts);
 
         if(nb_rx) {
             for(uint32_t pkt_indx = 0; pkt_indx < nb_rx; pkt_indx++) {
-                fprintf(stdout, "Received packet: %d, pkt_len: %u, data_len: %u, pool: %s.\n", pkts, rx_packets[pkt_indx + pkts]->pkt_len, rx_packets[pkt_indx + pkts]->data_len, rx_packets[pkt_indx + pkts]->pool->name);
+                fprintf(stdout, "\nReceived packet: %d, pkt_len: %u, data_len: %u, pool: %s.\n\n", pkts, rx_packets[pkt_indx]->pkt_len, rx_packets[pkt_indx]->data_len, rx_packets[pkt_indx]->pool->name);
                 pkts++;
             }
-            if(pkts == nb_pkts) {
-                break;
-            }
+
+//            this should be some check for the seconds of the test, because it receives extra packets other than the ones sent
+//            if(pkts == nb_pkts) {
+//                break;
+//            }
         }
     }
     return nb_rx;
@@ -330,7 +340,7 @@ int main() {
 
     start_port(eth_port_id);
 
-    FILE* pcap_file = fopen("./files/tg-test.pcap", "r");
+    FILE* pcap_file = fopen("./files/2.pcap", "r");
     if(!pcap_file) {
         fprintf(stderr, "Cannot open file. Exiting.\n");
         return EXIT_FAILURE;
@@ -362,10 +372,8 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    uint16_t sent = send_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
+    prep_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
 
-    if(sent) {
-        rx_loop(eth_port_id, sent);
-    }
+    rx_loop(eth_port_id, pkt_num, tx_packets);
 
 }
