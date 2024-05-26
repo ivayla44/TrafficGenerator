@@ -6,12 +6,6 @@
 #include "app/cfg/config.h"
 #include "mgmt/gen_config.h"
 
-
-#define RTE_RX_DESC_DEFAULT 1024
-#define RTE_TX_DESC_DEFAULT 1024
-
-#define VALID_RSS_HF 0x38d34
-
 #define MAX_PKT_BURST 32
 
 bool dpdk_init(char** params, int sz) {
@@ -50,14 +44,19 @@ void prep_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struc
     }
 }
 
-uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_packets) {
+uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_packets, uint16_t duration_seconds) {
     struct rte_mbuf* rx_packets[MAX_PKT_BURST];
     int nb_rx, cnt = 0;
     uint32_t pkts = 0;
 
+    time_t start_time = time(NULL);
+
     while(true) {
-//      right now it's a random number for send period
-        if(!(++cnt % 10000000)) {
+        if (difftime(time(NULL), start_time) >= duration_seconds) {
+            break;
+        }
+
+        if(!(++cnt % 1000000)) {
             uint16_t sent = rte_eth_tx_burst(eth_port_id, 0, tx_packets, nb_pkts);
             if(sent < nb_pkts) {
                 struct rte_eth_stats tmp = {};
@@ -78,11 +77,6 @@ uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_pa
                 fprintf(stdout, "\nReceived packet: %d, pkt_len: %u, data_len: %u, pool: %s.\n\n", pkts, rx_packets[pkt_indx]->pkt_len, rx_packets[pkt_indx]->data_len, rx_packets[pkt_indx]->pool->name);
                 pkts++;
             }
-
-//            this should be some check for the seconds of the test, because it receives extra packets other than the ones sent
-//            if(pkts == nb_pkts) {
-//                break;
-//            }
         }
     }
     return nb_rx;
@@ -96,13 +90,10 @@ int main() {
 
 
     tgn_cfg_stgs tgn_stgs = {};
-    if (parse_config("./files/config.cfg", &tgn_stgs)) {
-        printf("Working Directory: %s\n", tgn_stgs.working_dir);
-        printf("CPUs: %d, %d\n", tgn_stgs.cpus[0], tgn_stgs.cpus[1]);
-        printf("Max Count Mbufs: %u\n", tgn_stgs.max_cnt_mbufs);
-        printf("Number of Memory Channels: %hu\n", tgn_stgs.num_memory_channels);
-        printf("NIC Queue Size: %hu\n", tgn_stgs.nic_queue_size);
-    } else {
+    if(parse_config("./files/config.cfg", &tgn_stgs)) {
+        print_cfg_stgs(&tgn_stgs);
+    }
+    else {
         fprintf(stderr, "Failed to parse configuration.\n");
         return EXIT_FAILURE;
     }
@@ -138,6 +129,8 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    print_cfg(&cfg, 2);
+
 
     fclose(yaml_file);
 
@@ -166,7 +159,9 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    char* dest_mac_addr_str = "e4:8d:8c:20:fb:bb";
+//    char* dest_mac_addr_str = "e4:8d:8c:20:fb:bb";
+    char* dest_mac_addr_str = cfg.dut_ether_addr;
+    fprintf(stdout, "DUT: %s\n", cfg.dut_ether_addr);
     struct rte_ether_addr dest_mac_addr;
     if(rte_ether_unformat_addr(dest_mac_addr_str, &dest_mac_addr) != 0) {
         fprintf(stderr, "Cannot parse mac addr string to rte_ether_addr struct.\n");
@@ -175,6 +170,6 @@ int main() {
 
     prep_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
 
-    rx_loop(eth_port_id, pkt_num, tx_packets);
+    rx_loop(eth_port_id, pkt_num, tx_packets, cfg.duration_secs);
 
 }

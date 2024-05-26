@@ -11,6 +11,7 @@
 #include <sys/errno.h>
 #include <stdbool.h>
 #include <sys/resource.h>
+#include <time.h>
 
 
 // LINUX
