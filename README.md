@@ -2,7 +2,7 @@
 Diploma project 2023/2024
 --------------------------
 
-Линк към документация на дипломния проект: [https://docs.google.com/document/d/1MA7QZc3DwFl5SL4exH2MynIlq706Vmhw51Ps8Y13oTk/edit?usp=sharing]([url](https://docs.google.com/document/d/1MA7QZc3DwFl5SL4exH2MynIlq706Vmhw51Ps8Y13oTk/edit?usp=sharing))
+Линк към документация на дипломния проект: [[https://docs.google.com/document/d/1MA7QZc3DwFl5SL4exH2MynIlq706Vmhw51Ps8Y13oTk/edit?usp=sharing]]([url](https://docs.google.com/document/d/1MA7QZc3DwFl5SL4exH2MynIlq706Vmhw51Ps8Y13oTk/edit?usp=sharing))
 
 ГЛАВА IV. РЪКОВОДСТВО ЗА ПОТРЕБИТЕЛЯ
 ------------------------------------
