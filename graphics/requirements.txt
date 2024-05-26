@@ -1,0 +1,5 @@
+json
+sys
+pyqt5
+pyqtgraph
+numpy
