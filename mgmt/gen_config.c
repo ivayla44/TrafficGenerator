@@ -54,35 +54,18 @@ bool prs_cfg(FILE* yaml_file, tgn_cfg* cfg) {
     return true;
 }
 
+void print_cfg(tgn_cfg* cfg, uint32_t nfile) {
+    fprintf(stdout, "duration_secs: %llu, dut_ether_addr %s\n", cfg->duration_secs, cfg->dut_ether_addr);
 
-//int main() {
-//    FILE* yaml_file = fopen("../files/yaml_cfg.yaml", "r");
-//
-//    if(!yaml_file) {
-//        perror("Cannot open file.\n");
-//        return EXIT_FAILURE;
-//    }
-//
-//
-//    tgn_cfg cfg = {};
-//
-//    if(prs_cfg(yaml_file, &cfg)) {
-//        fprintf(stdout, "duration_secs: %llu, dut_ether_addr %s\n", cfg.duration_secs, cfg.dut_ether_addr);
-//
-//        for(int i = 0; i < 2; i++) {
-//            fprintf(stdout, "name: %s; bursts: %llu; fps: %llu; ipg: %llu; cln_ips: %s; srv_ips: %s; cln_port %llu\n",
-//                    cfg.captures[i].name,
-//                    cfg.captures[i].bursts,
-//                    cfg.captures[i].fps,
-//                    cfg.captures[i].ipg,
-//                    cfg.captures[i].cln_ips,
-//                    cfg.captures[i].srv_ips,
-//                    cfg.captures[i].cln_port
-//            );
-//        }
-//    }
-//
-//    fclose(yaml_file);
-//
-//    return EXIT_SUCCESS;
-//}
+    for(int i = 0; i < nfile; i++) {
+            fprintf(stdout, "name: %s; bursts: %llu; fps: %llu; ipg: %llu; cln_ips: %s; srv_ips: %s; cln_port %llu\n",
+                    cfg->captures[i].name,
+                    cfg->captures[i].bursts,
+                    cfg->captures[i].fps,
+                    cfg->captures[i].ipg,
+                    cfg->captures[i].cln_ips,
+                    cfg->captures[i].srv_ips,
+                    cfg->captures[i].cln_port
+            );
+    }
+}
