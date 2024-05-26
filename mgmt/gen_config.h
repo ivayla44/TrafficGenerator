@@ -24,5 +24,6 @@ typedef struct cfg {
 }tgn_cfg;
 
 bool prs_cfg(FILE* yaml_file, tgn_cfg* cfg);
+void print_cfg(tgn_cfg* cfg, uint32_t nfile);
 
 #endif //TRAFFIC_GENERATOR_GEN_CONFIG_H

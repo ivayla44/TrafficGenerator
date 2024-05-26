@@ -35,19 +35,10 @@ bool parse_config(const char *filename, tgn_cfg_stgs *tgn_stgs) {
     return true;
 }
 
-//int main() {
-//    tgn_cfg_stgs tgn_stgs = {};
-//    if (parse_config("config.cfg", &tgn_stgs)) {
-//        printf("Working Directory: %s\n", tgn_stgs.working_dir);
-//        printf("CPUs: %d, %d\n", tgn_stgs.cpus[0], tgn_stgs.cpus[1]);
-//        printf("Max Count Mbufs: %u\n", tgn_stgs.max_cnt_mbufs);
-//        printf("Number of Memory Channels: %hu\n", tgn_stgs.num_memory_channels);
-//        printf("NIC Queue Size: %hu\n", tgn_stgs.nic_queue_size);
-//        free(tgn_stgs.working_dir); // Free dynamically allocated memory
-//    } else {
-//        printf("Failed to parse configuration.\n");
-//    }
-//
-//    return 0;
-//}
-
+void print_cfg_stgs(tgn_cfg_stgs* tgn_stgs) {
+    fprintf(stdout, "Working Directory: %s\n", tgn_stgs->working_dir);
+    fprintf(stdout, "CPUs: %d, %d\n", tgn_stgs->cpus[0], tgn_stgs->cpus[1]);
+    fprintf(stdout, "Max Count Mbufs: %u\n", tgn_stgs->max_cnt_mbufs);
+    fprintf(stdout, "Number of Memory Channels: %hu\n", tgn_stgs->num_memory_channels);
+    fprintf(stdout, "NIC Queue Size: %hu\n", tgn_stgs->nic_queue_size);
+}
