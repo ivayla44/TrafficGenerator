@@ -40,17 +40,25 @@ set(LIBFYAML_LIBRARY_DIR "${3RD_PARTY_DIR}/libfyaml/install/lib")
 set(LIBCONFIG_INCLUDE_DIR "${3RD_PARTY_DIR}/libconfig/install/include")
 set(LIBCONFIG_LIBRARY_DIR "${3RD_PARTY_DIR}/libconfig/install/lib")
 
+set(CJSON_INCLUDE_DIR "${3RD_PARTY_DIR}/cjson/install/include")
+set(CJSON_LIBRARY_DIR "${3RD_PARTY_DIR}/cjson/install/lib")
+
 target_include_directories(traffic_generator
-        PRIVATE ${LIBFYAML_INCLUDE_DIR} ${LIBCONFIG_INCLUDE_DIR}
+        PRIVATE ${LIBFYAML_INCLUDE_DIR} ${LIBCONFIG_INCLUDE_DIR} ${CJSON_INCLUDE_DIR}
         )
 
-target_link_directories(traffic_generator PRIVATE ${LIBFYAML_LIBRARY_DIR} ${LIBCONFIG_LIBRARY_DIR})
-target_link_libraries(traffic_generator PRIVATE fyaml config)
+target_link_directories(traffic_generator
+        PRIVATE ${LIBFYAML_LIBRARY_DIR} ${LIBCONFIG_LIBRARY_DIR} ${CJSON_LIBRARY_DIR}
+        )
+
+target_link_libraries(traffic_generator
+        PRIVATE fyaml config cjson
+        )
 
 
 pkg_search_module(LIBDPDK REQUIRED libdpdk)
 target_compile_options(traffic_generator PRIVATE ${LIBDPDK_CFLAGS})
-target_link_libraries(traffic_generator PRIVATE ${LIBDPDK_STATIC_LDFLAGS} -lnuma -lpcap -lfyaml -lconfig)
+target_link_libraries(traffic_generator PRIVATE ${LIBDPDK_STATIC_LDFLAGS} -lnuma -lpcap -lfyaml -lconfig -lcjson)
 
 
 target_precompile_headers(traffic_generator

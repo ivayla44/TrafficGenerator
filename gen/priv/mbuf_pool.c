@@ -14,7 +14,7 @@ struct rte_mempool* init_mempool(uint16_t socket_id, tgn_cfg_stgs *cfg) {
         return NULL;
     }
 
-    struct rte_mempool* mbuf_pool= rte_pktmbuf_pool_create(name, cfg->max_cnt_mbufs, cache_sz, priv_sz, mbuf_sz, socket_id);
+    struct rte_mempool* mbuf_pool = rte_pktmbuf_pool_create(name, cfg->max_cnt_mbufs, cache_sz, priv_sz, mbuf_sz, socket_id);
     if(!mbuf_pool) {
         fprintf(stderr, "Errno: %d\nValue: %s\n", rte_errno, rte_strerror(rte_errno));
         return NULL;

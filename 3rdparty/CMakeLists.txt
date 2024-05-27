@@ -93,6 +93,21 @@ ExternalProject_Add(libconfig
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DBUILD_SHARED_LIBS=OFF
         )
 
+################################################################################
+# Install CJSON
+
+set(CJSON_PREFIX_DIR "${3RD_PARTY_PREFIX_DIR}/cjson")
+set(CJSON_INCLUDE_DIR ${CJSON_PREFIX_DIR}/include)
+set(CJSON_LIBRARY_DIR ${CJSON_PREFIX_DIR}/lib)
+
+ExternalProject_Add(cjson
+        GIT_REPOSITORY https://github.com/DaveGamble/cJSON.git
+        GIT_TAG master
+        PREFIX ${3RD_PARTY_PREFIX_DIR}/cjson
+        INSTALL_DIR ${CJSON_PREFIX_DIR}/install
+        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DBUILD_SHARED_LIBS=OFF
+        )
+
 
 ################################################################################
 # Mongoose include files

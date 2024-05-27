@@ -11,6 +11,7 @@
 #include <sys/errno.h>
 #include <stdbool.h>
 #include <sys/resource.h>
+#include <time.h>
 
 
 // LINUX
@@ -20,6 +21,7 @@
 #include <pcap/pcap.h>
 #include "3rdparty/libfyaml/install/include/libfyaml.h"
 #include "3rdparty/libconfig/install/include/libconfig.h"
+#include "3rdparty/cjson/install/include/cjson/cJSON.h"
 
 
 ////////////////////////////////////////////////////////
@@ -45,7 +47,7 @@
 //#include <pcap/pcap.h>
 //#include <libfyaml/include/libfyaml.h>
 //#include <libconfig/include/libconfig.h>
-//
+//#include "/usr/local/opt/cjson/include/cjson/cJSON.h"
 //
 //////////////////////////////////////////////////////////
 //// DPDK INCLUDES
@@ -61,6 +63,6 @@
 //#include "lib/net/rte_ether.h"
 //#include "lib/eal/include/rte_bitops.h"
 //#include "lib/net/rte_ip.h"
-//
-//
-//#endif //TRAFFIC_GENERATOR_PRECOMPILED_H
+
+
+#endif //TRAFFIC_GENERATOR_PRECOMPILED_H
