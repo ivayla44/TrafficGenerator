@@ -5,6 +5,7 @@
 #include "gen/priv/eth_dev.h"
 #include "app/cfg/config.h"
 #include "mgmt/gen_config.h"
+#include "mgmt/management.h"
 
 #define MAX_PKT_BURST 32
 
@@ -44,7 +45,7 @@ void prep_tx_packets(struct rte_mbuf** tx_packets, uint32_t pkt_num, const struc
     }
 }
 
-uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_packets, uint16_t duration_seconds) {
+uint32_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_packets, uint16_t duration_seconds, tgn_stats* tgn_summary) {
     struct rte_mbuf* rx_packets[MAX_PKT_BURST];
     int nb_rx, cnt = 0;
     uint32_t pkts = 0;
@@ -65,7 +66,7 @@ uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_pa
                             "Successfully transmitted packets: %lu\nFailed transmitted packets: %lu\n",
                             tmp.opackets, tmp.oerrors);
                 }
-                return 0;
+                return EXIT_FAILURE;
             }
 
         }
@@ -79,7 +80,24 @@ uint16_t rx_loop(uint16_t eth_port_id, uint16_t nb_pkts, struct rte_mbuf** tx_pa
             }
         }
     }
-    return nb_rx;
+
+    struct rte_eth_stats rte_summary = {};
+    if(!rte_eth_stats_get(eth_port_id, &rte_summary)) {
+        tgn_summary->cnt_rx_pkts = rte_summary.ipackets;
+        tgn_summary->cnt_tx_pkts = rte_summary.opackets;
+        tgn_summary->cnt_rx_bytes = rte_summary.ibytes;
+        tgn_summary->cnt_tx_bytes = rte_summary.obytes;
+        tgn_summary->cnt_rx_pkts_qfull = rte_summary.imissed;
+        tgn_summary->cnt_rx_pkts_nombuf = rte_summary.rx_nombuf;
+        tgn_summary->cnt_rx_pkts_err = rte_summary.ierrors;
+        tgn_summary->cnt_tx_pkts_err = rte_summary.oerrors;
+    }
+    else {
+        fprintf(stderr, "Error loading summary stats.\n");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int main() {
@@ -159,7 +177,6 @@ int main() {
         return EXIT_FAILURE;
     }
 
-//    char* dest_mac_addr_str = "e4:8d:8c:20:fb:bb";
     char* dest_mac_addr_str = cfg.dut_ether_addr;
     fprintf(stdout, "DUT: %s\n", cfg.dut_ether_addr);
     struct rte_ether_addr dest_mac_addr;
@@ -170,6 +187,9 @@ int main() {
 
     prep_tx_packets(tx_packets, pkt_num, &src_mac_addr, &dest_mac_addr, eth_port_id);
 
-    rx_loop(eth_port_id, pkt_num, tx_packets, cfg.duration_secs);
+    tgn_stats summary = {};
+    rx_loop(eth_port_id, pkt_num, tx_packets, cfg.duration_secs, &summary);
+
+    print_stats(&summary);
 
 }

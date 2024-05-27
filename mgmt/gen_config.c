@@ -55,10 +55,10 @@ bool prs_cfg(FILE* yaml_file, tgn_cfg* cfg) {
 }
 
 void print_cfg(tgn_cfg* cfg, uint32_t nfile) {
-    fprintf(stdout, "duration_secs: %llu, dut_ether_addr %s\n", cfg->duration_secs, cfg->dut_ether_addr);
+    fprintf(stdout, "duration_secs: %lu, dut_ether_addr %s\n", cfg->duration_secs, cfg->dut_ether_addr);
 
     for(int i = 0; i < nfile; i++) {
-            fprintf(stdout, "name: %s; bursts: %llu; fps: %llu; ipg: %llu; cln_ips: %s; srv_ips: %s; cln_port %llu\n",
+            fprintf(stdout, "name: %s; bursts: %lu; fps: %lu; ipg: %lu; cln_ips: %s; srv_ips: %s; cln_port %lu\n",
                     cfg->captures[i].name,
                     cfg->captures[i].bursts,
                     cfg->captures[i].fps,
