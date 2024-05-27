@@ -192,4 +192,11 @@ int main() {
 
     print_stats(&summary);
 
+    if(!save_sum_stats(summary)) {
+        fprintf(stdout, "Stats saved.\n");
+    }
+    else {
+        fprintf(stderr, "Stats saving issue.\n");
+    }
+
 }
