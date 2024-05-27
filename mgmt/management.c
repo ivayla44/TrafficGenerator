@@ -2,7 +2,10 @@
 #include "stats.h"
 
 bool save_sum_stats(tgn_stats sum_data) {
+    printf("in save stats\n");
     cJSON *summary_json = cJSON_CreateObject();
+
+    printf("create obj\n");
 
     cJSON_AddItemToObject(summary_json, "cnt_rx_pkts", cJSON_CreateNumber(sum_data.cnt_rx_pkts));
     cJSON_AddItemToObject(summary_json, "cnt_tx_pkts", cJSON_CreateNumber(sum_data.cnt_tx_pkts));
@@ -15,9 +18,12 @@ bool save_sum_stats(tgn_stats sum_data) {
 
     char *json_string = cJSON_Print(summary_json);
 
-//    printf("%s\n", json_string);
+    printf("create str\n");
 
-    FILE *file = fopen("../files/summary_stats.json", "w");
+
+    printf("%s\n", json_string);
+
+    FILE *file = fopen("./files/summary_stats.json", "w");
     if (file == NULL) {
         perror("Failed to open file");
         cJSON_Delete(summary_json);
